@@ -3,23 +3,120 @@ title: "Reproducible Research: Peer Assessment 1"
 output: 
   html_document:
     keep_md: true
+    
 ---
 
-
 ## Loading and preprocessing the data
+In order to analyse the activity monitoring data we must first load the dataset.
+In order to do this we must create a connection to the zip file containing
+the data:
+```{r}
+connection<- unzip("activity.zip")
+```
 
+The data can be read in using the data.table package.
+```{r}
+library(data.table)
+amd<- fread(connection)
+```
 
+We shall convert the date into the POSIXct format for convenience:
+```{r, results='hide'}
+# Convert date values 
+amd[, date := as.POSIXct(date,format = "%Y-%m-%d")]
+```
 
 ## What is mean total number of steps taken per day?
+The total number of steps (excluding missing values) taken each day during the 
+two months can be described with a histogram:
+```{r,  results='hide'}
+total_steps_per_day<- amd[!is.na(steps),sum(steps) ,by=date]
+total_steps_per_day[,hist(V1,
+                          breaks = 30,
+                          col="red",
+                          main = "",
+                          xlab = "Total steps taken in a day")]
+```
 
-
-
+A summary of the the total number of steps (excluding missing values) over all
+the days shows the mean number of steps in a day to be
+10770 and the median to be 10760:
+```{r}
+summary(total_steps_per_day[,V1])
+```
 ## What is the average daily activity pattern?
+The average daily activity pattern (excluding missing values) can be seen in the
+graph below where interval values range from 0-2400:
 
+```{r, results= 'hide'}
+steps_by_interval<- amd[!is.na(steps),mean(steps),by=interval]
+setnames(steps_by_interval,"V1","mean_steps_taken")
+steps_by_interval[,plot(interval,mean_steps_taken, type = "l")]
+```
 
+The interval during which the maximum average steps are taken starts at 8:35 a.m. 
 
+```{r}
+steps_by_interval[which.max(mean_steps_taken)]
+```
 ## Imputing missing values
+No missing values occur for either the date or interval labels:
+```{r}
+amd[is.na(date),sum(.N)]
+amd[is.na(interval),sum(.N)]
+```
+The total number of missing values for the recorded steps is:
+```{r}
+amd[is.na(steps),sum(.N)]
+```
+The values will be imputed to reduce the bias introduced by omitting these
+values. For each interval that was not reported, the average activity over that
+interval is instead used:
+```{r}
+#Generate the mean for each interval
+amd[,mean_steps := as.integer(mean(na.omit(steps))),by= interval]
+# Created a new column for the new data with imputed values
+amd[,imputed_steps:=steps]
+# Assign an intervals mean value in all cases of missing data
+amd[is.na(imputed_steps),imputed_steps:= as.integer(round(mean_steps))]
+```
 
+In order to assess the effect of imputing the previous analysis is carried out
+once more:
+The total number of steps taken each day during the 
+two months can be described with a histogram:
+```{r,  results='hide'}
+total_steps_per_day<- amd[!is.na(imputed_steps),sum(imputed_steps) ,by=date]
+total_steps_per_day[,hist(V1,
+                          breaks = 30,
+                          col="red",
+                          main = "",
+                          xlab = "Total steps taken in a day")]
+```
+
+A summary of the the total number of steps over all
+the days shows the mean number of steps in a day to be
+10750 and the median to be 10640:
+```{r}
+summary(total_steps_per_day[,V1])
+```
+These results are similar to before with the exception of the substantial and 
+artificial increase in one bin of the histogram. Imputing missing values using
+this method is not ideal.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+During the weekdays activity in the morning is starts earlier, persists for a
+longer duration and is more intense than on the weekends. At weekends, however, activity
+levels of activity are maintained more consistently over the full course of the day:
+```{r, results = "hide"}
+amd[,weekend_status := "weekday"]
+amd[weekdays(date) %in% c("Saturday","Sunday"), weekend_status := "weekend"]
+comparison_of_days<- amd[,mean(imputed_steps) ,by = .(interval, weekend_status)]
+library(lattice)
+comparison_of_days[,xyplot(V1 ~ interval | weekend_status,
+                           type = "l" , 
+                           ylab = "Mean activity (step count)",
+                           layout = c(1,2))]
+
+```
